@@ -19,6 +19,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      pages_artifact: ${{ steps.pages-artifact.outputs.name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,14 +63,30 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      # deploy-pages@v4 要求本次查找恰好命中 1 个产物，且重跑不能覆盖已有产物。
+      # 名字带上 run attempt：整次重跑会上传新名字；只重跑失败的 deploy 时，
+      # 使用 check 上次留下的这个名字，不会再上传。
+      - name: Name Pages artifact
+        id: pages-artifact
+        run: echo "name=github-pages-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: 'public'
+          name: ${{ steps.pages-artifact.outputs.name }}
 
+  # 必须等上传 job 结束再发布。同一 job 里紧接着查列表，会在产物刚完成时得到 0 个。
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: ${{ needs.check.outputs.pages_artifact }}
 
       - name: Show site URL
         run: 'echo "site: https://jerylihub.github.io/gate/ (deploy outcome: ${{ steps.deployment.outcome }})"'
